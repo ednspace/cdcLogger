@@ -1,0 +1,19 @@
+Welcome,
+
+A bit about the software:
+cdcLogger is program written in PyQT designed to graph the incoming data from a symCDC electronics package in near real time. The program uses threading and ques and PyQWT for the graphing. It periodically reads the serial port based on a timer value then graphs and optionally logs the data point to a CSV file.
+
+
+A bit about the electronics:
+The electronics package utilizes an AD7745 capacitive to digital converter chip produced by Analog Devices. Once it is configured this chip uses the I2C bus to emit digital capacitive values at a 50Hz sample rate. The values are gathered by a PIC microcontroller and then relayed to the computer via an FTDI serial to USB converter chip and ultimately arrive visually to the end user in the PyQWT graph and PyQT GUI.
+
+Special Thanks:
+This code was heavily influenced and inspired by an example program on “Live Data Plotting” written by Eli Bendersky. My code is different from his at this point, but without his original examples I would have had a very hard time developing my version.
+
+At the time of this writing his blog post can be found here:
+http://eli.thegreenplace.net/2009/08/07/a-live-data-monitor-with-python-pyqt-and-pyserial/
+
+The symCDC website with more information about the electronics package and examples of how it can be used to collect real world data with capacitive sensors can be found here.
+http://symCDC.com
+
+Thanks for checking out this project!
