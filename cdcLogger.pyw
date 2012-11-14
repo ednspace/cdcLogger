@@ -16,7 +16,8 @@ This code updated and maintained by
 Eric Daine (ednspace@gmail.com)
 Last modified: 10.20.2012
 """
-import random, sys
+import sys
+from PyQt4 import QtCore
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 import PyQt4.Qwt5 as Qwt
@@ -30,6 +31,23 @@ from com_monitor import ComMonitorThread
 from eblib.serialutils import full_port_name, enumerate_serial_ports
 from eblib.utils import get_all_from_queue, get_item_from_queue
 from livedatafeed import LiveDataFeed
+
+class DateTimeScaleDraw( Qwt.QwtScaleDraw ):
+    '''Class used to draw a datetime axis on our plot.
+    '''
+    def __init__( self, *args ):
+        Qwt.QwtScaleDraw.__init__( self, *args )
+
+    def label( self, value ):
+        '''Function used to create the text of each label
+        used to draw the axis.
+        '''
+        try:
+            dt = datetime.datetime.fromtimestamp( value )
+        except:
+            dt = datetime.datetime.fromtimestamp( 0 )
+        #return Qwt.QwtText( '%s' % dt.strftime( '%d/%m%Y %H:%M:%S' ) )
+        return Qwt.QwtText( '%s' % dt.strftime( '%H:%M:%S' ) )
 
 
 class PlottingDataMonitor(QMainWindow):
@@ -59,11 +77,20 @@ class PlottingDataMonitor(QMainWindow):
     def create_plot(self):
         plot = Qwt.QwtPlot(self)
         plot.setCanvasBackground(Qt.black)
+        
+        #plot.setAxisScale(Qwt.QwtPlot.xBottom, 0, 10000, 1000)
+
+
+
         plot.setAxisTitle(Qwt.QwtPlot.xBottom, 'Time')
-        plot.setAxisScale(Qwt.QwtPlot.xBottom, 0, 10, 1)
+        plot.setAxisScaleDraw(Qwt.QwtPlot.xBottom, DateTimeScaleDraw() )
+        plot.setAxisLabelRotation(Qwt.QwtPlot.xBottom, -45.0 )
+        plot.setAxisLabelAlignment(Qwt.QwtPlot.xBottom, QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom )
+
         plot.setAxisTitle(Qwt.QwtPlot.yLeft, 'CDC Counts')
+        plot.setAxisAutoScale(Qwt.QwtPlot.yLeft)
         #plot.setAxisScale(Qwt.QwtPlot.yLeft, 0, 8000000, 1000000)
-        plot.replot()
+        #plot.replot()
 
         curve = Qwt.QwtPlotCurve('')
         curve.setRenderHint(Qwt.QwtPlotItem.RenderAntialiased)
@@ -102,14 +129,27 @@ class PlottingDataMonitor(QMainWindow):
         portname_groupbox.setLayout(portname_layout)
 
 
-        # Plot
+        # Add The Plot
         #
         self.plot, self.curve = self.create_plot()
         plot_layout = QVBoxLayout()
         plot_layout.addWidget(self.plot)
         plot_groupbox = QGroupBox('Capacitive to Digital Sensor Graph')
         plot_groupbox.setLayout(plot_layout)
-
+        
+        
+        #Add The Zoomer
+        #
+        
+        self.zoomer = Qwt.QwtPlotZoomer(
+            Qwt.QwtPlot.xBottom,
+            Qwt.QwtPlot.yLeft,
+            Qwt.QwtPicker.DragSelection,
+            Qwt.QwtPicker.AlwaysOff,
+            self.plot.canvas())
+        self.zoomer.setRubberBandPen(QPen(Qt.red))
+        #self.zoomer.setZoomBase(True)
+        
 
 
         # Main frame and layout
@@ -141,6 +181,16 @@ class PlottingDataMonitor(QMainWindow):
             shortcut="Ctrl+T", slot=self.on_stopLog, tip="Stop the data logger")
 
 
+        self.openFile = QAction(QIcon('open.png'), 'Open Graph', self)
+        self.openFile.setShortcut('Ctrl+O')
+        self.openFile.setStatusTip('Open Graph File')
+        self.openFile.triggered.connect(self.on_Open)
+
+
+
+
+
+
 
         exit_action = self.create_action("E&xit", slot=self.close,
             shortcut="Ctrl+X", tip="Exit the application")
@@ -151,7 +201,7 @@ class PlottingDataMonitor(QMainWindow):
         self.stopLog_action.setEnabled(False)
 
         self.add_actions(self.file_menu,
-            (   selectport_action, self.startMon_action, self.stopMon_action, self.startLog_action, self.stopLog_action,
+            (   selectport_action, self.openFile, self.startMon_action, self.stopMon_action, self.startLog_action, self.stopLog_action,
                 None, exit_action))
 
         self.help_menu = self.menuBar().addMenu("&Help")
@@ -160,6 +210,45 @@ class PlottingDataMonitor(QMainWindow):
             tip='About the monitor')
 
         self.add_actions(self.help_menu, (about_action,))
+        
+        
+
+    def selected(self, _):
+        self.showInfo()
+
+    def on_Open(self):
+        cdc_data = []
+        index = []
+
+        fname = QFileDialog.getOpenFileName(self, 'Open file',
+                'QDir::currentPath()')
+
+
+        if fname.isEmpty() == False:
+            f = open(fname, 'r')
+            cdc_data = f.readlines() 
+            f.close()
+            cdc_data.pop(0) #Pop the first and the last to get rid of bad data
+            cdc_data.pop(-1)
+            cdc_data_float = map(float, cdc_data)
+            index = [i for i in range(len(cdc_data))]
+        
+            #Draw the Graph
+            #
+            
+            self.curve.setData(index, cdc_data_float) 
+            #self.curve.setData(index[0:3600], cdc_data_float[0:3600])
+            #Set up the axis scales
+            self.plot.setAxisAutoScale(Qwt.QwtPlot.xBottom)
+            self.plot.setAxisAutoScale(Qwt.QwtPlot.yLeft)
+            self.zoomer.setZoomBase(True)
+       
+            
+        
+        
+           
+            #self.plot.replot()
+
 
     def set_actions_enable_state(self):
         if self.portname.text() == '':
@@ -179,7 +268,7 @@ class PlottingDataMonitor(QMainWindow):
 
     def on_about(self):
         msg = __doc__
-        QMessageBox.about(self, "About the demo", msg.strip())
+        QMessageBox.about(self, "About cdcLogger", msg.strip())
 
     def on_select_port(self):
         ports = list(enumerate_serial_ports())
@@ -196,8 +285,6 @@ class PlottingDataMonitor(QMainWindow):
             self.set_actions_enable_state()
 
     def on_stopMon(self):
-        """ Stop the monitor
-        """
         if self.com_monitor is not None:
             self.com_monitor.join(10)
             self.com_monitor = None
@@ -209,8 +296,6 @@ class PlottingDataMonitor(QMainWindow):
 
 
     def on_startMon(self):
-        """ Start the monitor: com_monitor thread and the update timer
-        """
         if self.com_monitor is not None or self.portname.text() == '':
             return
 
@@ -229,7 +314,6 @@ class PlottingDataMonitor(QMainWindow):
             self.com_monitor = None
 
         self.monitor_active = True
-        #self.logger_active = True
         self.set_actions_enable_state()
 
         self.timer = QTimer()
@@ -237,10 +321,6 @@ class PlottingDataMonitor(QMainWindow):
 
         self.timer.start(.005)
         self.status_text.setText('Monitor running')
-
-        #update_freq = self.updatespeed_knob.value()
-        #if update_freq > 0:
-        #   self.timer.start(100.0 / update_freq)
 
     def on_startLog(self):
         self.log()
@@ -281,19 +361,25 @@ class PlottingDataMonitor(QMainWindow):
         if self.livefeed.has_new_data:
             data = self.livefeed.read_data()
 
+            
 
-            self.temperature_samples.append(
-                (data['timestamp'], data['temperature']))
-            if len(self.temperature_samples) > 500:
+            #time.time() is a timestamp for the graph X axis ticks
+            self.temperature_samples.append((time.time(), data['temperature']))
+            if len(self.temperature_samples) > 765:
                 self.temperature_samples.pop(0)
 
             xdata = [s[0] for s in self.temperature_samples]
             ydata = [s[1] for s in self.temperature_samples]
 
             #avg = sum(ydata) / float(len(ydata))
-
+            
+            self.plot.setAxisAutoScale(Qwt.QwtPlot.yLeft)
             self.plot.setAxisScale(Qwt.QwtPlot.xBottom, xdata[0], max(20, xdata[-1]))
             self.curve.setData(xdata, ydata)
+            
+            #self.plot.setAxisAutoScale(Qwt.QwtPlot.xBottom)
+            
+            #self.zoomer.setZoomBase(True)
             self.plot.replot()
 
             #self.thermo.setValue(avg)
@@ -315,10 +401,16 @@ class PlottingDataMonitor(QMainWindow):
 
                 if self.logger_active:
                     self.reading_num = self.reading_num + 1
-                    utimestamp = time.time() #A unix style timestamp for the log
 
                     #Uncomment for stamps
+                    #
+                    #utimestamp = time.time() #A unix style timestamp for the log
                     #self.save_data_stamps(self.reading_num,int(qdata[count][0]),qdata[count][1],utimestamp)
+                    
+                    if self.today != str(datetime.date.today()):
+                        self.file.close()
+                        self.log();
+                        count = 0;
 
                     self.save_data(int(qdata[count][0]))
 
