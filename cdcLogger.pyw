@@ -43,9 +43,9 @@ class DateTimeScaleDraw( Qwt.QwtScaleDraw ):
         used to draw the axis.
         '''
         try:
-            dt = datetime.datetime.fromtimestamp( value )
+            dt = datetime.datetime.fromtimestamp(  value )
         except:
-            dt = datetime.datetime.fromtimestamp( 0 )
+            dt = datetime.datetime.fromtimestamp(  1349931600 )
         #return Qwt.QwtText( '%s' % dt.strftime( '%d/%m%Y %H:%M:%S' ) )
         return Qwt.QwtText( '%s' % dt.strftime( '%H:%M:%S' ) )
 
@@ -83,7 +83,7 @@ class PlottingDataMonitor(QMainWindow):
 
 
         plot.setAxisTitle(Qwt.QwtPlot.xBottom, 'Time')
-        plot.setAxisScaleDraw(Qwt.QwtPlot.xBottom, DateTimeScaleDraw() )
+        plot.setAxisScaleDraw(Qwt.QwtPlot.xBottom, DateTimeScaleDraw())
         plot.setAxisLabelRotation(Qwt.QwtPlot.xBottom, -45.0 )
         plot.setAxisLabelAlignment(Qwt.QwtPlot.xBottom, QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom )
 
@@ -138,7 +138,7 @@ class PlottingDataMonitor(QMainWindow):
         plot_groupbox.setLayout(plot_layout)
         
         
-        #Add The Zoomer
+        # Add The Zoomer
         #
         
         self.zoomer = Qwt.QwtPlotZoomer(
@@ -166,15 +166,15 @@ class PlottingDataMonitor(QMainWindow):
         self.set_actions_enable_state()
 
     def create_menu(self):
+        # The File Menu
+        #
         self.file_menu = self.menuBar().addMenu("&File")
-
         selectport_action = self.create_action("Select COM &Port...",
             shortcut="Ctrl+P", slot=self.on_select_port, tip="Select a COM port")
         self.startMon_action = self.create_action("&Start monitor",
             shortcut="Ctrl+M", slot=self.on_startMon, tip="Start the data monitor")
         self.stopMon_action = self.create_action("&Stop monitor",
             shortcut="Ctrl+T", slot=self.on_stopMon, tip="Stop the data monitor")
-
         self.startLog_action = self.create_action("&Start logger",
             shortcut="Ctrl+L", slot=self.on_startLog, tip="Start the data logger")
         self.stopLog_action = self.create_action("&Stop logger",
@@ -210,8 +210,6 @@ class PlottingDataMonitor(QMainWindow):
             tip='About the monitor')
 
         self.add_actions(self.help_menu, (about_action,))
-        
-        
 
     def selected(self, _):
         self.showInfo()
@@ -219,9 +217,7 @@ class PlottingDataMonitor(QMainWindow):
     def on_Open(self):
         cdc_data = []
         index = []
-
-        fname = QFileDialog.getOpenFileName(self, 'Open file',
-                'QDir::currentPath()')
+        fname = QFileDialog.getOpenFileName(self, 'Open file', 'QDir::currentPath()')
 
 
         if fname.isEmpty() == False:
@@ -233,7 +229,7 @@ class PlottingDataMonitor(QMainWindow):
             cdc_data_float = map(float, cdc_data)
             index = [i for i in range(len(cdc_data))]
         
-            #Draw the Graph
+            # Draw the Graph
             #
             
             self.curve.setData(index, cdc_data_float) 
@@ -242,13 +238,8 @@ class PlottingDataMonitor(QMainWindow):
             self.plot.setAxisAutoScale(Qwt.QwtPlot.xBottom)
             self.plot.setAxisAutoScale(Qwt.QwtPlot.yLeft)
             self.zoomer.setZoomBase(True)
-       
-            
-        
-        
            
             #self.plot.replot()
-
 
     def set_actions_enable_state(self):
         if self.portname.text() == '':
@@ -293,11 +284,17 @@ class PlottingDataMonitor(QMainWindow):
         self.timer.stop()
         self.set_actions_enable_state()
         self.status_text.setText('Monitor idle')
-
-
+   
     def on_startMon(self):
         if self.com_monitor is not None or self.portname.text() == '':
-            return
+           return
+
+        # First define a couple of variables that will be used to calculate the period
+        self.startTime = 1.1
+        self.mark = 'False'
+        self.periodAvg = []
+        self.periodCount = 0
+
 
         self.data_q = Queue.Queue()
         self.error_q = Queue.Queue()
@@ -321,7 +318,7 @@ class PlottingDataMonitor(QMainWindow):
 
         self.timer.start(.005)
         self.status_text.setText('Monitor running')
-
+    
     def on_startLog(self):
         self.log()
         self.logger_active = True
@@ -344,13 +341,14 @@ class PlottingDataMonitor(QMainWindow):
 
         self.today = str(datetime.date.today())
         self.logname = '%s.csv' % self.today
-        self.file = csv.writer(open(self.logname, "wb"))
+        self.file = open(self.logname, "wb")
+        self.file_cvs = csv.writer(self.file)
 
     def save_data(self,reading):
-        self.file.writerow ([reading])
+        self.file_cvs.writerow ([reading])
 
     def save_data_stamps(self,reading_num,reading,timestamp,utimestamp):
-        self.file.writerow ([reading_num,reading,timestamp,utimestamp])
+        self.file_cvs.writerow ([reading_num,reading,timestamp,utimestamp])
 
     def update_monitor(self):
         """ Updates the state of the monitor window with new
@@ -360,28 +358,52 @@ class PlottingDataMonitor(QMainWindow):
         """
         if self.livefeed.has_new_data:
             data = self.livefeed.read_data()
-
             
 
-            #time.time() is a timestamp for the graph X axis ticks
+            
+            # time.time() is a timestamp for the graph X axis ticks
+            # This may be a good place to add period calculation
+            #
             self.temperature_samples.append((time.time(), data['temperature']))
             if len(self.temperature_samples) > 765:
                 self.temperature_samples.pop(0)
 
             xdata = [s[0] for s in self.temperature_samples]
             ydata = [s[1] for s in self.temperature_samples]
+            
+            
+            if (len(self.temperature_samples) > 2):
+                
+                if data['temperature'] > self.temperature_samples[-2][1]:
+                    self.mark = 1
+                elif (data['temperature'] < self.temperature_samples[-2][1]) and (self.mark == 1):
+                    endTime = time.clock()
+                    period = (endTime - self.startTime) 
+                    #print 'startTime==>', self.startTime
+                    #print 'endTime==>', endTime
+                    if self.periodCount > 10:
+                        self.periodAvg.append(period)
 
+                    if len(self.periodAvg) > 10:
+                        print 'Average===>', sum(self.periodAvg)/len(self.periodAvg)
+
+                    self.periodCount += 1
+                    self.startTime = endTime
+                    self.mark = 0
+                    
             #avg = sum(ydata) / float(len(ydata))
+            #print self.temperature_samples[-1][0]
+            #print self.temperature_samples[-1][1]
+
             
             self.plot.setAxisAutoScale(Qwt.QwtPlot.yLeft)
             self.plot.setAxisScale(Qwt.QwtPlot.xBottom, xdata[0], max(20, xdata[-1]))
             self.curve.setData(xdata, ydata)
             
-            #self.plot.setAxisAutoScale(Qwt.QwtPlot.xBottom)
-            
-            #self.zoomer.setZoomBase(True)
             self.plot.replot()
-
+            
+            #self.plot.setAxisAutoScale(Qwt.QwtPlot.xBottom)
+            #self.zoomer.setZoomBase(True)
             #self.thermo.setValue(avg)
 
     def read_serial_data(self):
@@ -389,28 +411,34 @@ class PlottingDataMonitor(QMainWindow):
             from the serial port.
         """
         qdata = list(get_all_from_queue(self.data_q))
-        if len(qdata) > 0: #At this point qdata object is a list type
+        if len(qdata) > 0: # At this point qdata object is a list type
             count = 0
+
+            # Updates the text box with the incoming values
+            # Clears the text box every 4096 values so that 
+            # Memory does not fill up with scrolling text
             for elem in list(qdata):
                 self.editbox.append(qdata[count][0])
                 if self.editbox.document().blockCount() == 4096:
                     self.editbox.clear()
                 data = dict(timestamp=qdata[count][1],temperature=int(qdata[count][0]))
                 self.livefeed.add_data(data)
-
+                
 
                 if self.logger_active:
                     self.reading_num = self.reading_num + 1
 
                     #Uncomment for stamps
                     #
+
                     #utimestamp = time.time() #A unix style timestamp for the log
                     #self.save_data_stamps(self.reading_num,int(qdata[count][0]),qdata[count][1],utimestamp)
+
                     
                     if self.today != str(datetime.date.today()):
                         self.file.close()
                         self.log();
-                        count = 0;
+                        self.reading_num = self.reading_num + 1
 
                     self.save_data(int(qdata[count][0]))
 
