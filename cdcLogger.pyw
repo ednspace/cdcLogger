@@ -25,6 +25,7 @@ import Queue
 import csv
 import datetime
 import time
+import math
 
 
 from com_monitor import ComMonitorThread
@@ -128,6 +129,50 @@ class PlottingDataMonitor(QMainWindow):
         portname_groupbox = QGroupBox('COM Port')
         portname_groupbox.setLayout(portname_layout)
 
+        
+
+        # Period Box
+        #
+        periodBox_l, self.periodBox = self.make_data_box('Period:')
+        meanBox_l, self.meanBox = self.make_data_box('Mean:')
+        deviationBox_l, self.deviationBox = self.make_data_box('Deviation:')
+        countBox_l, self.countBox = self.make_data_box('Counts:')
+        
+        self.resetButton = QPushButton(QIcon('lucia.png'), 'Reset')
+        self.resetButton.setGeometry(10, 10, 100, 30)
+        self.resetButton.clicked.connect(self.periodReset)
+        
+        self.stopButton = QPushButton(QIcon('lucia.png'), 'Stop')
+        self.stopButton.setGeometry(10,10,100,30)
+        self.stopButton.clicked.connect(self.periodStop)
+        
+        periodBox_layout = QHBoxLayout()
+
+        periodBox_layout.addWidget(periodBox_l)
+        periodBox_layout.addWidget(self.periodBox, 0)
+
+        periodBox_layout.addWidget(meanBox_l)
+        periodBox_layout.addWidget(self.meanBox, 0)
+
+        periodBox_layout.addWidget(deviationBox_l)
+        periodBox_layout.addWidget(self.deviationBox, 0)
+        
+        periodBox_layout.addWidget(countBox_l)
+        periodBox_layout.addWidget(self.countBox, 0)
+        
+        periodBox_layout.addWidget(self.resetButton)
+        periodBox_layout.addWidget(self.stopButton)
+        self.stop = 1
+
+
+        periodBox_layout.addStretch(1)
+        periodBox_groupbox = QGroupBox('Period Calculation')
+        self.periodBox.setText('P0')
+        self.meanBox.setText('M0')
+        self.deviationBox.setText('P0')
+        self.countBox.setText('C0')
+        periodBox_groupbox.setLayout(periodBox_layout)
+
 
         # Add The Plot
         #
@@ -158,12 +203,22 @@ class PlottingDataMonitor(QMainWindow):
         main_layout = QVBoxLayout()
         main_layout.addWidget(portname_groupbox)
         main_layout.addWidget(plot_groupbox)
+        main_layout.addWidget(periodBox_groupbox)
         main_layout.addWidget(editbox_groupbox)
         main_layout.addStretch(1)
         self.main_frame.setLayout(main_layout)
 
         self.setCentralWidget(self.main_frame)
         self.set_actions_enable_state()
+    def periodReset(self):
+        print('Reset')
+        self.periodAvg = []
+        self.periodCount = 0
+        self.stop = 0
+
+    def periodStop(self):
+        print('Stop')
+        self.stop = 1
 
     def create_menu(self):
         # The File Menu
@@ -213,6 +268,20 @@ class PlottingDataMonitor(QMainWindow):
 
     def selected(self, _):
         self.showInfo()
+
+    def meanstdv(self, x): 
+        """ Calculate mean and standard deviation of data x[]:
+        mean = {\sum_i x_i \over n} std = sqrt(\sum_i (x_i - mean)^2 \over n-1) 
+        """ 
+        from math import sqrt
+        n, mean, std = len(x), 0, 0 
+        for a in x: 
+            mean = mean + a 
+        mean = mean / float(n)
+        for a in x:
+            std = std + (a - mean)**2
+        std = sqrt(std / float(n-1)) 
+        return mean, std
 
     def on_Open(self):
         cdc_data = []
@@ -372,28 +441,26 @@ class PlottingDataMonitor(QMainWindow):
             ydata = [s[1] for s in self.temperature_samples]
             
             
-            if (len(self.temperature_samples) > 2):
+            if (len(self.temperature_samples) > 2 and self.stop == 0):
                 
                 if data['temperature'] > self.temperature_samples[-2][1]:
                     self.mark = 1
                 elif (data['temperature'] < self.temperature_samples[-2][1]) and (self.mark == 1):
                     endTime = time.clock()
                     period = (endTime - self.startTime) 
-                    #print 'startTime==>', self.startTime
-                    #print 'endTime==>', endTime
-                    if self.periodCount > 10:
-                        self.periodAvg.append(period)
+                    self.periodAvg.append(period)
 
-                    if len(self.periodAvg) > 10:
-                        print 'Average===>', sum(self.periodAvg)/len(self.periodAvg)
-
-                    self.periodCount += 1
+                    if (len(self.periodAvg) > 2):
+                        self.Average, self.Deviation = self.meanstdv(self.periodAvg[1:len(self.periodAvg)])
+                        self.meanBox.setText(str(self.Average))
+                        self.deviationBox.setText(str(self.Deviation))
+                        self.countBox.setText(str(len(self.periodAvg)-1))
+                    
                     self.startTime = endTime
+                    self.periodCount += 1
                     self.mark = 0
                     
             #avg = sum(ydata) / float(len(ydata))
-            #print self.temperature_samples[-1][0]
-            #print self.temperature_samples[-1][1]
 
             
             self.plot.setAxisAutoScale(Qwt.QwtPlot.yLeft)
